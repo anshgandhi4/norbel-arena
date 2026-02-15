@@ -1,0 +1,9 @@
+.venv/
+.DS_Store/
+__pycache__/
+.env
+frontend/node_modules/
+frontend/dist/
+.pytest_cache/
+package-lock.json
+AGENTS.md
