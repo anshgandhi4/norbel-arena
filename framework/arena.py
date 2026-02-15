@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass, field
 from itertools import combinations
 from pathlib import Path
@@ -10,8 +9,8 @@ from typing import Any, Callable, Mapping, Sequence
 
 from .game import Game
 from .result import MatchResult
-from .runner import MatchRunner, RunnerConfig
-from .serialize import json_dumps, to_serializable
+from .runner import MatchRunner
+from .serialize import to_serializable
 
 
 @dataclass(frozen=True)
@@ -233,93 +232,3 @@ class Arena:
         expected_blue = 1.0 - expected_red
         ratings[red] = red_rating + k * (score_red - expected_red)
         ratings[blue] = blue_rating + k * ((1.0 - score_red) - expected_blue)
-
-
-def _build_default_codenames_agents() -> dict[str, Any]:
-    from codenames.codenames_state import TEAM_PLAYER_IDS, Team
-    from .agents.random_agent import RandomAgent
-
-    return {
-        TEAM_PLAYER_IDS[(Team.RED, "SPYMASTER")]: RandomAgent("random-red-spymaster"),
-        TEAM_PLAYER_IDS[(Team.RED, "OPERATIVE")]: RandomAgent("random-red-operative"),
-        TEAM_PLAYER_IDS[(Team.BLUE, "SPYMASTER")]: RandomAgent("random-blue-spymaster"),
-        TEAM_PLAYER_IDS[(Team.BLUE, "OPERATIVE")]: RandomAgent("random-blue-operative"),
-    }
-
-
-def _parse_codenames_agent_spec(spec: str) -> dict[str, Any]:
-    from codenames.codenames_state import TEAM_PLAYER_IDS, Team
-    from .agents.random_agent import RandomAgent
-
-    player_ids = [
-        TEAM_PLAYER_IDS[(Team.RED, "SPYMASTER")],
-        TEAM_PLAYER_IDS[(Team.RED, "OPERATIVE")],
-        TEAM_PLAYER_IDS[(Team.BLUE, "SPYMASTER")],
-        TEAM_PLAYER_IDS[(Team.BLUE, "OPERATIVE")],
-    ]
-    if spec.strip().lower() in {"", "random"}:
-        return _build_default_codenames_agents()
-
-    agents: dict[str, Any] = {}
-    for part in spec.split(","):
-        item = part.strip()
-        if not item:
-            continue
-        if "=" not in item:
-            raise ValueError(f"Invalid --agents entry: {item!r}. Expected player_id=agent_type.")
-        player_id, agent_type = [chunk.strip() for chunk in item.split("=", 1)]
-        if player_id not in player_ids:
-            raise ValueError(f"Unknown player_id in --agents: {player_id!r}")
-        if agent_type.lower() != "random":
-            raise ValueError("Only 'random' is currently supported in CLI agent mapping.")
-        agents[player_id] = RandomAgent(f"random-{player_id.lower()}")
-
-    for player_id in player_ids:
-        agents.setdefault(player_id, RandomAgent(f"random-{player_id.lower()}"))
-    return agents
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    """CLI entrypoint for batch match execution."""
-    parser = argparse.ArgumentParser(description="Run arena matches.")
-    parser.add_argument("--game", default="codenames", choices=["codenames"])
-    parser.add_argument("--num-games", type=int, default=1)
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--max-turns", type=int, default=200)
-    parser.add_argument("--agents", type=str, default="random")
-    parser.add_argument("--log-dir", type=str, default=None)
-    parser.add_argument("--output", type=str, default=None)
-    args = parser.parse_args(argv)
-
-    if args.game != "codenames":
-        raise ValueError(f"Unsupported game: {args.game}")
-
-    from codenames.codenames_game import CodenamesGame
-
-    seeds = [args.seed + offset for offset in range(args.num_games)]
-    runner = MatchRunner(
-        RunnerConfig(
-            max_turns=args.max_turns,
-            event_log_dir=args.log_dir,
-        )
-    )
-    arena = Arena(runner=runner)
-    agent_mapping = _parse_codenames_agent_spec(args.agents)
-    summary = arena.run_series(
-        game_factory=CodenamesGame,
-        agents_factory=agent_mapping,
-        seeds=seeds,
-        game_config={},
-    )
-    summary_dict = summary.to_dict()
-    print(json_dumps(summary_dict, indent=2))
-
-    if args.output:
-        output_path = Path(args.output)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json_dumps(summary_dict, indent=2), encoding="utf-8")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from .events import MatchEvent
 from .move import Move
@@ -37,5 +37,6 @@ class Agent(ABC):
     def on_game_end(self, result: MatchResult, history: Sequence[MatchEvent]) -> None:
         """Optional callback invoked when the match ends."""
 
-
-Player = Agent
+    def debug_context(self) -> Mapping[str, Any] | None:
+        """Optional diagnostics payload for logging around errors/illegal moves."""
+        return None

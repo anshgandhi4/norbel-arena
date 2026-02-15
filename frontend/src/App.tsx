@@ -3,28 +3,60 @@ import Board from './components/Board'
 import ControlsPanel from './components/ControlsPanel'
 import GameInfo from './components/GameInfo'
 import MatchSetup from './components/MatchSetup'
+import type { SetupSelections } from './components/MatchSetup'
 import MoveHistory from './components/MoveHistory'
+import ReplayControls from './components/ReplayControls'
+import AppHeader, { type Theme } from './components/AppHeader'
+import WavelengthControls from './components/WavelengthControls'
+import WavelengthTranscript from './components/WavelengthTranscript'
 import { createMatch, fetchEvents, fetchObservation, submitMove } from './lib/api'
-import type { MatchEvent, MatchView, Move } from './lib/types'
+import type {
+  CodenamesObservation,
+  EvaluationMode,
+  GameName,
+  MatchEvent,
+  MatchView,
+  Move,
+  PlayerConfig,
+  WavelengthObservation
+} from './lib/types'
+
+const THEME_STORAGE_KEY = 'treehacks-ui-theme'
+
+function resolveInitialTheme(): Theme {
+  if (typeof window === 'undefined') {
+    return 'dark'
+  }
+  const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY)
+  return storedTheme === 'light' ? 'light' : 'dark'
+}
 
 export default function App() {
   const [view, setView] = useState<MatchView | null>(null)
   const [events, setEvents] = useState<MatchEvent[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [theme, setTheme] = useState<Theme>(() => resolveInitialTheme())
+  const [lastSetupSelections, setLastSetupSelections] = useState<SetupSelections | null>(null)
 
   const matchId = view?.match_id
   const playerId = view?.player_id
 
   useEffect(() => {
-    if (!matchId || !playerId) {
+    document.documentElement.setAttribute('data-theme', theme)
+    document.documentElement.style.colorScheme = theme
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme)
+  }, [theme])
+
+  useEffect(() => {
+    if (!matchId || !playerId || !view?.meta.is_live) {
       return
     }
 
     let cancelled = false
 
     const poll = async () => {
-      if (!view || view.meta.terminal || view.meta.is_human_turn) {
+      if (!view || view.meta.terminal || view.meta.is_human_turn || !view.meta.is_live) {
         return
       }
       try {
@@ -51,34 +83,41 @@ export default function App() {
   }, [matchId, playerId, view])
 
   const onCreateMatch = async (params: {
-    humanPlayerId: string
-    seed: number
-    boardSize: number
-    startingTeam: 'RED' | 'BLUE' | 'RANDOM'
+    game: GameName
+    startingTeam?: 'RED' | 'BLUE' | 'RANDOM'
+    evaluationMode: EvaluationMode
+    players: Record<string, PlayerConfig>
+    viewerPlayerId: string
   }) => {
     setLoading(true)
     setError(null)
+    setLastSetupSelections({
+      game: params.game,
+      startingTeam: params.startingTeam,
+      evaluationMode: params.evaluationMode,
+      players: Object.fromEntries(
+        Object.entries(params.players).map(([playerId, config]) => [playerId, { ...config }])
+      ),
+      viewerPlayerId: params.viewerPlayerId
+    })
     try {
-      const players: Record<string, string> = {
-        RED_OPERATIVE: 'random',
-        RED_SPYMASTER: 'random',
-        BLUE_OPERATIVE: 'random',
-        BLUE_SPYMASTER: 'random'
-      }
-      players[params.humanPlayerId] = 'human'
-
       const config: Record<string, unknown> = {
-        board_size: params.boardSize
+        evaluation_mode: params.evaluationMode
       }
-      if (params.startingTeam !== 'RANDOM') {
+      if (params.game === 'codenames' && params.startingTeam && params.startingTeam !== 'RANDOM') {
         config.starting_team = params.startingTeam
       }
 
+      const humanPlayers = Object.entries(params.players)
+        .filter(([, playerConfig]) => playerConfig.type === 'human')
+        .map(([playerIdValue]) => playerIdValue)
+
       const created = await createMatch({
-        seed: params.seed,
+        game: params.game,
         config,
-        players,
-        human_player_id: params.humanPlayerId
+        players: params.players,
+        human_player_id: humanPlayers.length === 1 ? humanPlayers[0] : undefined,
+        viewer_player_id: params.viewerPlayerId
       })
       setView(created)
       const ev = await fetchEvents(created.match_id)
@@ -88,6 +127,14 @@ export default function App() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const refreshView = async (targetTurn?: number) => {
+    if (!view) {
+      return
+    }
+    const refreshed = await fetchObservation(view.match_id, view.player_id, targetTurn)
+    setView(refreshed)
   }
 
   const submit = async (move: Move) => {
@@ -104,8 +151,7 @@ export default function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       try {
-        const refreshed = await fetchObservation(view.match_id, view.player_id)
-        setView(refreshed)
+        await refreshView()
       } catch {
         // no-op: original error is enough
       }
@@ -114,52 +160,120 @@ export default function App() {
     }
   }
 
+  const goToTurn = async (turn: number) => {
+    if (!view) {
+      return
+    }
+    setLoading(true)
+    setError(null)
+    try {
+      await refreshView(turn)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const goLive = async () => {
+    if (!view) {
+      return
+    }
+    setLoading(true)
+    setError(null)
+    try {
+      await refreshView()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const canRenderGame = useMemo(() => !!view, [view])
+  const canAct = !!view && view.meta.is_human_turn && view.meta.is_live && !view.meta.terminal && !loading
+  const toggleTheme = () => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))
 
   if (!canRenderGame || !view) {
     return (
       <main className="app setup-page">
-        <MatchSetup onCreate={onCreateMatch} loading={loading} error={error} />
+        <AppHeader theme={theme} onToggleTheme={toggleTheme} leftLinks={[{ href: '/leaderboard', label: 'Leaderboards' }]} />
+        <div className="setup-stack">
+          <MatchSetup
+            onCreate={onCreateMatch}
+            loading={loading}
+            error={error}
+            initialSelections={lastSetupSelections}
+          />
+        </div>
       </main>
     )
   }
 
+  const isCodenames = view.observation.game === 'codenames'
+
   return (
     <main className="app game-page">
-      <header className="topbar">
-        <h2>Match {view.match_id}</h2>
-        <button
-          onClick={() => {
-            setView(null)
-            setEvents([])
-            setError(null)
-          }}
-        >
-          New Match
-        </button>
-      </header>
+      <AppHeader theme={theme} onToggleTheme={toggleTheme} leftLinks={[{ href: '/leaderboard', label: 'Leaderboards' }]} />
 
       {error ? <div className="error-banner">{error}</div> : null}
 
       <section className="layout">
-        <Board
-          board={view.observation.board}
-          legalMovesSpec={view.legal_moves_spec}
-          isHumanTurn={view.meta.is_human_turn && !view.meta.terminal && !loading}
-          onGuess={(index) => submit({ type: 'Guess', index })}
-        />
+        <div className="board-column">
+          {isCodenames ? (
+            <Board
+              board={(view.observation as CodenamesObservation).board}
+              legalMovesSpec={view.legal_moves_spec}
+              isHumanTurn={canAct}
+              onGuess={(index) => submit({ type: 'Guess', index })}
+            />
+          ) : (
+            <WavelengthTranscript observation={view.observation as WavelengthObservation} />
+          )}
+
+          <div className="board-actions">
+            <button
+              className="board-new-match-button"
+              onClick={() => {
+                setView(null)
+                setEvents([])
+                setError(null)
+              }}
+            >
+              New Match
+            </button>
+          </div>
+        </div>
 
         <aside className="sidebar">
-          <GameInfo observation={view.observation} meta={view.meta} result={view.result} />
-          <ControlsPanel
-            observation={view.observation}
-            legalMovesSpec={view.legal_moves_spec}
-            isHumanTurn={view.meta.is_human_turn && !view.meta.terminal && !loading}
-            onGiveClue={(clue, count) => submit({ type: 'GiveClue', clue, count })}
-            onEndTurn={() => submit({ type: 'EndTurn' })}
-            onResign={() => submit({ type: 'Resign' })}
+          <ReplayControls
+            replayTurn={view.meta.replay_turn}
+            maxTurn={view.meta.max_turn}
+            isLive={view.meta.is_live}
+            onPrev={() => goToTurn(view.meta.replay_turn - 1)}
+            onNext={() => goToTurn(view.meta.replay_turn + 1)}
+            onLive={goLive}
           />
-          <MoveHistory events={events} />
+          <GameInfo observation={view.observation} meta={view.meta} result={view.result} />
+
+          {isCodenames ? (
+            <ControlsPanel
+              observation={view.observation as CodenamesObservation}
+              legalMovesSpec={view.legal_moves_spec}
+              isHumanTurn={canAct}
+              onGiveClue={(clue, count) => submit({ type: 'GiveClue', clue, count })}
+              onEndTurn={() => submit({ type: 'EndTurn' })}
+            />
+          ) : (
+            <WavelengthControls
+              observation={view.observation as WavelengthObservation}
+              legalMovesSpec={view.legal_moves_spec}
+              isHumanTurn={canAct}
+              onSubmitMove={submit}
+            />
+          )}
+
+          <MoveHistory events={events} selectedTurn={view.meta.replay_turn} onSelectTurn={goToTurn} />
         </aside>
       </section>
     </main>

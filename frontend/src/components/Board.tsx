@@ -38,7 +38,6 @@ export default function Board({ board, legalMovesSpec, isHumanTurn, onGuess }: B
             onClick={() => onGuess(tile.index)}
           >
             <span className="word">{tile.word}</span>
-            <span className="meta">#{tile.index}</span>
           </button>
         )
       })}

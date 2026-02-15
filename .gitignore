@@ -4,6 +4,7 @@ __pycache__/
 .env
 frontend/node_modules/
 frontend/dist/
+server/data/report_cards.json
 .pytest_cache/
 package-lock.json
 AGENTS.md

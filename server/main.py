@@ -1,7 +1,8 @@
-"""FastAPI server exposing a local match API for human-in-the-loop play."""
+"""FastAPI server exposing a local match API for human and/or AI play."""
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
@@ -12,7 +13,7 @@ from framework.serialize import json_dumps
 from server.schemas import CreateMatchRequest, SubmitMoveRequest
 from server.session import SessionStore
 
-app = FastAPI(title="Codenames Local API", version="0.1.0")
+app = FastAPI(title="State Games Local API", version="0.1.0")
 store = SessionStore()
 
 app.add_middleware(
@@ -30,29 +31,42 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _time_based_seed() -> int:
+    """Generate a positive time-derived seed when client does not provide one."""
+    seed = int(time.time_ns() & 0x7FFFFFFF)
+    return seed if seed != 0 else 1
+
+
 @app.post("/api/match/new")
 def new_match(request: CreateMatchRequest) -> dict:
     """Create a new in-memory match session."""
+    seed = request.seed if request.seed is not None else _time_based_seed()
     try:
         session = store.create_match(
-            seed=request.seed,
+            game=request.game,
+            seed=seed,
             config=request.config,
             players=request.players,
             human_player_id=request.human_player_id,
+            viewer_player_id=request.viewer_player_id,
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    player_id = session.selected_player(request.human_player_id)
+    player_id = session.selected_player(request.viewer_player_id or request.human_player_id)
     return session.view(player_id)
 
 
 @app.get("/api/match/{match_id}/observation")
-def get_observation(match_id: str, player_id: str = Query(...)) -> dict:
+def get_observation(
+    match_id: str,
+    player_id: str = Query(...),
+    turn: int | None = Query(default=None, ge=0),
+) -> dict:
     """Get latest observation and legal moves for one player."""
     try:
         session = store.get(match_id)
-        return session.view(player_id)
+        return session.view(player_id, turn=turn)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Unknown match_id: {match_id}") from exc
     except Exception as exc:
@@ -92,6 +106,12 @@ def get_events(match_id: str, format: str = Query(default="array")) -> Any:
         text = "\n".join(json_dumps(event) for event in events)
         return PlainTextResponse(content=text, media_type="application/jsonl")
     return events
+
+
+@app.get("/api/report-cards")
+def get_report_cards() -> dict[str, Any]:
+    """Return persisted report cards for all games and agents."""
+    return store.report_cards()
 
 
 if __name__ == "__main__":

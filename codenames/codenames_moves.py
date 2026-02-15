@@ -15,7 +15,6 @@ class MoveType(str, Enum):
     GIVE_CLUE = "GiveClue"
     GUESS = "Guess"
     END_TURN = "EndTurn"
-    RESIGN = "Resign"
 
 
 @dataclass(frozen=True)
@@ -54,13 +53,6 @@ class EndTurn(Move):
     move_type = MoveType.END_TURN.value
 
 
-@dataclass(frozen=True)
-class Resign(Move):
-    """Any-seat move to resign the game."""
-
-    move_type = MoveType.RESIGN.value
-
-
 def move_from_dict(data: Mapping[str, Any]) -> Move:
     """Parse a Codenames move from JSON payload."""
     move_type = data.get("type") or data.get("move_type")
@@ -74,6 +66,4 @@ def move_from_dict(data: Mapping[str, Any]) -> Move:
         return Guess.from_dict(data)
     if move_type == MoveType.END_TURN.value:
         return EndTurn()
-    if move_type == MoveType.RESIGN.value:
-        return Resign()
     raise ValueError(f"Unknown Codenames move type: {move_type!r}")

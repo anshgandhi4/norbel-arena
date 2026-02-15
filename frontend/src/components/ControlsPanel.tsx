@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react'
-import type { LegalMovesSpec, Observation } from '../lib/types'
+import type { CodenamesObservation, LegalMovesSpec } from '../lib/types'
 
 interface ControlsPanelProps {
-  observation: Observation
+  observation: CodenamesObservation
   legalMovesSpec: LegalMovesSpec
   isHumanTurn: boolean
   onGiveClue: (clue: string, count: number) => void
   onEndTurn: () => void
-  onResign: () => void
 }
 
 export default function ControlsPanel({
@@ -15,8 +14,7 @@ export default function ControlsPanel({
   legalMovesSpec,
   isHumanTurn,
   onGiveClue,
-  onEndTurn,
-  onResign
+  onEndTurn
 }: ControlsPanelProps) {
   const [clue, setClue] = useState('')
   const [count, setCount] = useState(1)
@@ -29,10 +27,6 @@ export default function ControlsPanel({
   const canEndTurn = useMemo(() => {
     return isHumanTurn && observation.phase === 'OPERATIVE_GUESSING' && legalMovesSpec.allowed?.EndTurn === true
   }, [isHumanTurn, legalMovesSpec.allowed, observation.phase])
-
-  const canResign = useMemo(() => {
-    return isHumanTurn && legalMovesSpec.allowed?.Resign !== false
-  }, [isHumanTurn, legalMovesSpec.allowed])
 
   return (
     <section className="panel card">
@@ -55,27 +49,24 @@ export default function ControlsPanel({
             />
           </label>
           <button
+            className="give-clue-action"
             disabled={!canGiveClue || clue.trim().length === 0 || count < 0}
             onClick={() => {
               onGiveClue(clue.trim(), count)
               setClue('')
             }}
           >
-            Submit GiveClue
+            Give Clue
           </button>
         </div>
       ) : (
         <div className="control-group">
-          <p>Click a highlighted tile to send Guess(index).</p>
+          <p className="control-help">Click a highlighted tile to send Guess (Index).</p>
           <button disabled={!canEndTurn} onClick={onEndTurn}>
-            EndTurn
+            End Turn
           </button>
         </div>
       )}
-
-      <button className="danger" disabled={!canResign} onClick={onResign}>
-        Resign
-      </button>
     </section>
   )
 }

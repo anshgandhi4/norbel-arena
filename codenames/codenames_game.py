@@ -10,7 +10,7 @@ from typing import Any, Mapping, Sequence
 from framework.game import Game, LegalMovesSpec
 from framework.result import MatchResult, TerminationReason
 
-from .codenames_moves import EndTurn, GiveClue, Guess, MoveType, Resign, move_from_dict
+from .codenames_moves import EndTurn, GiveClue, Guess, MoveType, move_from_dict
 from .codenames_observation import CodenamesObservation
 from .codenames_state import (
     CardType,
@@ -199,6 +199,7 @@ DEFAULT_WORDS: tuple[str, ...] = (
 )
 
 SAMPLE_CLUES: tuple[str, ...] = ("alpha", "beta", "gamma", "delta", "echo", "vector", "orbit", "spectrum")
+FIXED_BOARD_SIZE = 25
 
 
 class CodenamesGame(Game[CodenamesState, Any, CodenamesObservation]):
@@ -215,9 +216,7 @@ class CodenamesGame(Game[CodenamesState, Any, CodenamesObservation]):
         cfg.update(config or {})
         rng = random.Random(seed)
 
-        board_size = int(cfg.get("board_size", 25))
-        if board_size <= 3:
-            raise ValueError("board_size must be > 3.")
+        board_size = FIXED_BOARD_SIZE
 
         words_source = tuple(cfg.get("word_list", DEFAULT_WORDS))
         if len(words_source) < board_size:
@@ -315,9 +314,6 @@ class CodenamesGame(Game[CodenamesState, Any, CodenamesObservation]):
         if team is not state.turn_team:
             return False, "Wrong team for current turn."
 
-        if isinstance(move, Resign):
-            return True, None
-
         if state.phase is Phase.SPYMASTER_CLUE:
             if role is not Role.SPYMASTER:
                 return False, "Only spymaster can give clue in SPYMASTER_CLUE phase."
@@ -339,23 +335,13 @@ class CodenamesGame(Game[CodenamesState, Any, CodenamesObservation]):
             if state.revealed[move.index]:
                 return False, "Card already revealed."
             return True, None
-        return False, "Expected Guess, EndTurn, or Resign in OPERATIVE_GUESSING phase."
+        return False, "Expected Guess or EndTurn in OPERATIVE_GUESSING phase."
 
     def apply_move(self, state: CodenamesState, player_id: str, move: Any) -> CodenamesState:
         """Apply a legal move and return next immutable state."""
         legal, reason = self.is_legal(state, player_id, move)
         if not legal:
             raise ValueError(f"Illegal move: {reason}")
-
-        if isinstance(move, Resign):
-            team, _ = team_role_for_player(player_id)
-            return replace(
-                state,
-                winner=self._other_team(team),
-                termination_reason="resign",
-                turn_index=state.turn_index + 1,
-                last_move=move.to_dict(),
-            )
 
         if isinstance(move, GiveClue):
             return replace(
@@ -441,9 +427,7 @@ class CodenamesGame(Game[CodenamesState, Any, CodenamesObservation]):
             Team.BLUE.value: float(blue_revealed),
         }
 
-        if state.winner is not None and state.termination_reason == "resign":
-            reason = TerminationReason.RESIGNATION
-        elif state.winner is not None:
+        if state.winner is not None:
             reason = TerminationReason.NORMAL_WIN
         else:
             reason = TerminationReason.DRAW

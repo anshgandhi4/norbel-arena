@@ -18,7 +18,6 @@ class TerminationReason(str, Enum):
     MAX_TURNS = "max_turns"
     AGENT_EXCEPTION = "agent_exception"
     DRAW = "draw"
-    RESIGNATION = "resignation"
 
 
 @dataclass(frozen=True)

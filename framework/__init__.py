@@ -3,7 +3,7 @@
 from .game import Game, LegalMovesSpec, PlayerId
 from .move import Move
 from .observation import Observation
-from .player import Agent, Player
+from .player import Agent
 from .result import MatchResult, TerminationReason
 from .runner import MatchRun, MatchRunner, RunnerConfig
 from .state import State
@@ -17,7 +17,6 @@ __all__ = [
     "MatchRunner",
     "Move",
     "Observation",
-    "Player",
     "PlayerId",
     "RunnerConfig",
     "State",

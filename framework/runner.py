@@ -129,14 +129,18 @@ class MatchRunner:
                 start = perf_counter()
                 try:
                     move = agent.act(observation, legal_moves_spec)
-                except Exception as exc:  # pragma: no cover - protective path
+                except Exception as exc:
                     error = AgentExecutionError(player_id, f"Agent act() failed: {exc}")
+                    prompt_context = self._agent_debug_context(agent)
+                    payload: dict[str, Any] = {"player_id": player_id, "error": error.to_dict()}
+                    if prompt_context is not None:
+                        payload["prompt_context"] = prompt_context
                     history.append(
                         MatchEvent.create(
                             event_type=EventType.AGENT_ERROR,
                             game_id=resolved_game_id,
                             turn=turn,
-                            payload={"player_id": player_id, "error": error.to_dict()},
+                            payload=payload,
                         )
                     )
                     winner = game.forfeit_winner(state, player_id, "agent_exception")
@@ -157,7 +161,10 @@ class MatchRunner:
                             event_type=EventType.TERMINAL,
                             game_id=resolved_game_id,
                             turn=turn,
-                            payload={"result": result.to_dict()},
+                            payload={
+                                "result": result.to_dict(),
+                                **({"prompt_context": prompt_context} if prompt_context is not None else {}),
+                            },
                         )
                     )
                     return self._finish(
@@ -176,12 +183,16 @@ class MatchRunner:
                         player_id,
                         f"Move took {duration_ms:.2f}ms > limit {self.config.move_timeout_sec * 1000.0:.2f}ms.",
                     )
+                    prompt_context = self._agent_debug_context(agent)
+                    payload = {"player_id": player_id, "error": timeout_error.to_dict()}
+                    if prompt_context is not None:
+                        payload["prompt_context"] = prompt_context
                     history.append(
                         MatchEvent.create(
                             event_type=EventType.AGENT_ERROR,
                             game_id=resolved_game_id,
                             turn=turn,
-                            payload={"player_id": player_id, "error": timeout_error.to_dict()},
+                            payload=payload,
                         )
                     )
                     winner = game.forfeit_winner(state, player_id, "timeout")
@@ -202,7 +213,10 @@ class MatchRunner:
                             event_type=EventType.TERMINAL,
                             game_id=resolved_game_id,
                             turn=turn,
-                            payload={"result": result.to_dict()},
+                            payload={
+                                "result": result.to_dict(),
+                                **({"prompt_context": prompt_context} if prompt_context is not None else {}),
+                            },
                         )
                     )
                     return self._finish(
@@ -219,17 +233,21 @@ class MatchRunner:
 
                 illegal_move_counts[player_id] += 1
                 error = IllegalMoveError(player_id, move, reason)
+                prompt_context = self._agent_debug_context(agent)
+                illegal_payload: dict[str, Any] = {
+                    "player_id": player_id,
+                    "move": move.to_dict() if hasattr(move, "to_dict") else to_serializable(move),
+                    "reason": reason,
+                    "attempt": attempt + 1,
+                }
+                if prompt_context is not None:
+                    illegal_payload["prompt_context"] = prompt_context
                 history.append(
                     MatchEvent.create(
                         event_type=EventType.ILLEGAL_MOVE,
                         game_id=resolved_game_id,
                         turn=turn,
-                        payload={
-                            "player_id": player_id,
-                            "move": move.to_dict() if hasattr(move, "to_dict") else to_serializable(move),
-                            "reason": reason,
-                            "attempt": attempt + 1,
-                        },
+                        payload=illegal_payload,
                     )
                 )
                 try:
@@ -258,7 +276,10 @@ class MatchRunner:
                             event_type=EventType.TERMINAL,
                             game_id=resolved_game_id,
                             turn=turn,
-                            payload={"result": result.to_dict()},
+                            payload={
+                                "result": result.to_dict(),
+                                **({"prompt_context": prompt_context} if prompt_context is not None else {}),
+                            },
                         )
                     )
                     return self._finish(
@@ -435,3 +456,14 @@ class MatchRunner:
         if hasattr(observation, "to_dict") and callable(observation.to_dict):
             return digest(observation.to_dict())
         return digest(to_serializable(observation))
+
+    def _agent_debug_context(self, agent: Any) -> dict[str, Any] | None:
+        if not hasattr(agent, "debug_context") or not callable(agent.debug_context):
+            return None
+        try:
+            context = agent.debug_context()
+        except Exception:
+            return None
+        if context is None:
+            return None
+        return to_serializable(context)

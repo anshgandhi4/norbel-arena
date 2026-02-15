@@ -1,4 +1,4 @@
-import type { MatchEvent, MatchView, Move } from './types'
+import type { GameName, MatchEvent, MatchView, Move, PlayerConfig, ReportCards } from './types'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
 
@@ -31,10 +31,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function createMatch(params: {
-  seed: number
+  game: GameName
   config: Record<string, unknown>
-  players: Record<string, string>
-  human_player_id: string
+  players: Record<string, PlayerConfig>
+  human_player_id?: string
+  viewer_player_id?: string
 }): Promise<MatchView> {
   return request<MatchView>('/api/match/new', {
     method: 'POST',
@@ -42,8 +43,11 @@ export async function createMatch(params: {
   })
 }
 
-export async function fetchObservation(matchId: string, playerId: string): Promise<MatchView> {
+export async function fetchObservation(matchId: string, playerId: string, turn?: number): Promise<MatchView> {
   const query = new URLSearchParams({ player_id: playerId })
+  if (turn !== undefined) {
+    query.set('turn', String(turn))
+  }
   return request<MatchView>(`/api/match/${matchId}/observation?${query.toString()}`)
 }
 
@@ -56,4 +60,8 @@ export async function submitMove(matchId: string, playerId: string, move: Move):
 
 export async function fetchEvents(matchId: string): Promise<MatchEvent[]> {
   return request<MatchEvent[]>(`/api/match/${matchId}/events`)
+}
+
+export async function fetchReportCards(): Promise<ReportCards> {
+  return request<ReportCards>('/api/report-cards')
 }

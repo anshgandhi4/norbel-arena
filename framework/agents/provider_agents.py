@@ -8,7 +8,7 @@ from ..move import Move
 from .llm_agent import LLMAgent
 from .provider_clients import (
     AnthropicMessagesClient,
-    GrokChatClient,
+    DEFAULT_ANTHROPIC_MODEL,
     LocalLLMInferenceEngine,
     OpenAIChatClient,
     PerplexityChatClient,
@@ -51,7 +51,7 @@ class AnthropicAgent(LLMAgent):
         agent_id: str,
         move_parser: Callable[[Mapping[str, Any]], Move],
         *,
-        model: str = "claude-3-5-sonnet-latest",
+        model: str = DEFAULT_ANTHROPIC_MODEL,
         system_prompt: str | None = None,
         max_retries: int = 2,
         temperature: float = 0.0,
@@ -87,33 +87,6 @@ class PerplexityAgent(LLMAgent):
         super().__init__(
             agent_id=agent_id,
             llm_client=PerplexityChatClient(
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            ),
-            move_parser=move_parser,
-            system_prompt=system_prompt,
-            max_retries=max_retries,
-        )
-
-
-class GrokAgent(LLMAgent):
-    """LLM agent backed by xAI Grok models."""
-
-    def __init__(
-        self,
-        agent_id: str,
-        move_parser: Callable[[Mapping[str, Any]], Move],
-        *,
-        model: str = "grok-2-latest",
-        system_prompt: str | None = None,
-        max_retries: int = 2,
-        temperature: float = 0.0,
-        max_tokens: int | None = None,
-    ):
-        super().__init__(
-            agent_id=agent_id,
-            llm_client=GrokChatClient(
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
@@ -167,12 +140,23 @@ class NemotronLocalAgent(LLMAgent):
         agent_id: str,
         move_parser: Callable[[Mapping[str, Any]], Move],
         *,
+        model: str | None = None,
+        backend: str | None = None,
+        base_url: str | None = None,
         system_prompt: str | None = None,
         max_retries: int = 2,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ):
         super().__init__(
             agent_id=agent_id,
-            llm_client=default_nemotron_engine(),
+            llm_client=default_nemotron_engine(
+                model=model,
+                backend=backend,
+                base_url=base_url,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            ),
             move_parser=move_parser,
             system_prompt=system_prompt,
             max_retries=max_retries,
