@@ -63,3 +63,11 @@ Includes API smoke coverage (`tests/test_server_api_smoke.py`) for:
 - Match sessions are stored in-memory and keyed by `match_id`.
 - Observations are server-shaped per player role. Operative views do not receive hidden assignments.
 - `.env` can contain API keys for LLM agents and is loaded by the agents utilities.
+
+## TODO:
+
+1. Remove human requirement for game. 
+2. Make the front end users be able to choose their game setup (which agents in which roles. human players if any)
+3. Report card for each agenty (persist in a JSON DB for now)
+4. Allow the usexr to run a game and replay through it, clicking forward and backward across the different moves made
+5. tic tac toe, 20 questions, wavelength
